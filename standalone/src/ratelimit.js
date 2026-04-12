@@ -61,31 +61,49 @@ export default function valkeyRateLimit({
       const ip = generator(request, srv);
       if (!ip) return;
 
-      let max = defaultMax;
-      let duration = defaultDuration;
+      let tiers = [{ max: defaultMax, duration: defaultDuration }];
 
       if (getLimits) {
         const limits = await getLimits(params);
         if (limits) {
-          max = limits.max;
-          duration = limits.duration;
+          if (Array.isArray(limits)) {
+            tiers = limits;
+          } else {
+            tiers = [{ max: limits.max, duration: limits.duration }];
+          }
         }
       }
 
-      const windowMs = duration;
-      const windowSecs = Math.ceil(duration / 1000);
-      const window = Math.floor(Date.now() / windowMs);
-      const key = `rl:${scope}:${ip}:${windowMs}:${window}`;
+      let limited = false;
+      let strictestMax = tiers[0]?.max ?? defaultMax;
+      let strictestRemaining = strictestMax;
 
-      const count = await db.incr(key);
-      if (count === 1) {
-        await db.expire(key, windowSecs + 1);
+      for (const tier of tiers) {
+        const windowMs = tier.duration;
+        const windowSecs = Math.ceil(windowMs / 1000);
+        const window = Math.floor(Date.now() / windowMs);
+        const key = `rl:${scope}:${ip}:${windowMs}:${window}`;
+
+        const count = await db.incr(key);
+        if (count === 1) {
+          await db.expire(key, windowSecs + 1);
+        }
+
+        const remaining = Math.max(0, tier.max - count);
+        if (remaining < strictestRemaining) {
+          strictestRemaining = remaining;
+          strictestMax = tier.max;
+        }
+
+        if (count > tier.max) {
+          limited = true;
+        }
       }
 
-      set.headers["X-RateLimit-Limit"] = String(max);
-      set.headers["X-RateLimit-Remaining"] = String(Math.max(0, max - count));
+      set.headers["X-RateLimit-Limit"] = String(strictestMax);
+      set.headers["X-RateLimit-Remaining"] = String(strictestRemaining);
 
-      if (count > max) {
+      if (limited) {
         if (onLimited) {
           try { await onLimited(request, ip); } catch { }
         }

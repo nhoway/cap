@@ -307,6 +307,9 @@ export const capServer = new Elysia({
           if (configStr) {
             try {
               const config = JSON.parse(configStr);
+              if (config.ratelimitTiers?.length) {
+                return config.ratelimitTiers;
+              }
               if (config.ratelimitMax != null && config.ratelimitDuration != null) {
                 return {
                   max: config.ratelimitMax,

@@ -407,6 +407,7 @@ export const server = new Elysia({
         blockAutomatedBrowsers,
         ratelimitMax,
         ratelimitDuration,
+        ratelimitTiers,
         corsOrigins,
         blockNonBrowserUA,
         requiredHeaders,
@@ -429,6 +430,10 @@ export const server = new Elysia({
           ratelimitDuration !== undefined
             ? ratelimitDuration
             : (existingConfig.ratelimitDuration ?? null),
+        ratelimitTiers:
+          ratelimitTiers !== undefined
+            ? ratelimitTiers
+            : (existingConfig.ratelimitTiers ?? null),
         corsOrigins: corsOrigins !== undefined ? corsOrigins : (existingConfig.corsOrigins ?? null),
         blockNonBrowserUA:
           blockNonBrowserUA !== undefined
@@ -464,6 +469,18 @@ export const server = new Elysia({
         ratelimitMax: t.Optional(t.Union([t.Number({ minimum: 1, maximum: 10000 }), t.Null()])),
         ratelimitDuration: t.Optional(
           t.Union([t.Number({ minimum: 1000, maximum: 3600000 }), t.Null()]),
+        ),
+        ratelimitTiers: t.Optional(
+          t.Union([
+            t.Array(
+              t.Object({
+                max: t.Number({ minimum: 1, maximum: 100000 }),
+                duration: t.Number({ minimum: 1000, maximum: 3600000 }),
+              }),
+              { minItems: 1, maxItems: 10 },
+            ),
+            t.Null(),
+          ]),
         ),
         corsOrigins: t.Optional(t.Union([t.Array(t.String()), t.Null()])),
         blockNonBrowserUA: t.Optional(t.Union([t.Boolean(), t.Null()])),

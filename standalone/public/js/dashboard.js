@@ -437,17 +437,25 @@ function renderKeyDetail() {
         <h3 class="config-section-title">Security</h3>
         <div class="config-card">
           <h4 class="config-subsection-title">Rate limiting</h4>
-          <p class="headers-description" style="margin:-4px 0 8px">Override the global rate limit for this key. Leave empty to use the global defaults${ratelimitSettings ? ` (${ratelimitSettings.max} reqs / ${ratelimitSettings.duration / 1000}s)` : ""}.</p>
-          <div class="edit-row">
-            <div class="edit-field">
-              <label>Max requests</label>
-              <input type="number" id="cfgRatelimitMax" value="${key.config.ratelimitMax ?? ""}" min="1" max="10000" placeholder="${ratelimitSettings?.max ?? 30}">
-            </div>
-            <div class="edit-field">
-              <label>Window (ms)</label>
-              <input type="number" id="cfgRatelimitDuration" value="${key.config.ratelimitDuration ?? ""}" min="1000" max="3600000" step="1000" placeholder="${ratelimitSettings?.duration ?? 5000}">
-            </div>
+          <p class="headers-description" style="margin:-4px 0 8px">Define one or more rate limit tiers. Each tier is checked independently — requests are blocked when any tier is exceeded. Leave empty to use the global defaults${ratelimitSettings ? ` (${ratelimitSettings.max} reqs / ${ratelimitSettings.duration / 1000}s)` : ""}.</p>
+          <div id="ratelimitTiersList">
+            ${((key.config.ratelimitTiers?.length ? key.config.ratelimitTiers : (key.config.ratelimitMax != null ? [{ max: key.config.ratelimitMax, duration: key.config.ratelimitDuration }] : [])) || []).map((tier, i) => `
+            <div class="edit-row ratelimit-tier-row" data-tier-index="${i}">
+              <div class="edit-field">
+                <label>Max requests</label>
+                <input type="number" class="rl-tier-max" value="${tier.max}" min="1" max="100000" placeholder="${ratelimitSettings?.max ?? 30}">
+              </div>
+              <div class="edit-field">
+                <label>Window (ms)</label>
+                <input type="number" class="rl-tier-duration" value="${tier.duration}" min="1000" max="3600000" step="1000" placeholder="${ratelimitSettings?.duration ?? 5000}">
+              </div>
+              <button class="origin-remove-btn rl-tier-remove" title="Remove tier">&times;</button>
+            </div>`).join("")}
           </div>
+          <button class="add-btn" id="addRatelimitTierBtn" style="margin-top:8px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px;height:14px;margin-right:4px"><path d="M12 5v14M5 12h14"/></svg>
+            Add rate limit tier
+          </button>
 
           <hr class="settings-divider">
 
@@ -644,11 +652,27 @@ function renderKeyDetail() {
     document.getElementById("saveMainConfigBtn").disabled = !dirty;
   }
 
+  function getRatelimitTiers() {
+    return [...document.querySelectorAll("#ratelimitTiersList .ratelimit-tier-row")]
+      .map((row) => ({
+        max: parseInt(row.querySelector(".rl-tier-max").value, 10),
+        duration: parseInt(row.querySelector(".rl-tier-duration").value, 10),
+      }))
+      .filter((t) => t.max > 0 && t.duration > 0);
+  }
+
+  function ratelimitTiersEqual(a, b) {
+    if ((a?.length || 0) !== (b?.length || 0)) return false;
+    for (let i = 0; i < (a?.length || 0); i++) {
+      if (a[i].max !== b[i].max || a[i].duration !== b[i].duration) return false;
+    }
+    return true;
+  }
+
   function checkSecurityDirty() {
-    const rlMaxVal = document.getElementById("cfgRatelimitMax").value;
-    const rlDurVal = document.getElementById("cfgRatelimitDuration").value;
-    const ratelimitMax = rlMaxVal === "" ? null : parseInt(rlMaxVal, 10);
-    const ratelimitDuration = rlDurVal === "" ? null : parseInt(rlDurVal, 10);
+    const currentTiers = getRatelimitTiers();
+    const originalTiers = key.config.ratelimitTiers
+      || (key.config.ratelimitMax != null ? [{ max: key.config.ratelimitMax, duration: key.config.ratelimitDuration }] : []);
     const corsEnabled = document.getElementById("cfgCorsEnabled").checked;
     const keyCorsOrigins = corsEnabled ? getKeyCorsEntries() : [];
     const keyCorsOriginsVal = keyCorsOrigins.length ? keyCorsOrigins : null;
@@ -657,8 +681,7 @@ function renderKeyDetail() {
     const requiredHeaders = reqHeadersEnabled ? getKeyRequiredHeaders() : [];
     const requiredHeadersVal = requiredHeaders.length ? requiredHeaders : null;
     const dirty =
-      ratelimitMax !== (key.config.ratelimitMax ?? null) ||
-      ratelimitDuration !== (key.config.ratelimitDuration ?? null) ||
+      !ratelimitTiersEqual(currentTiers, originalTiers) ||
       !corsArraysEqual(keyCorsOriginsVal, key.config.corsOrigins ?? null) ||
       blockNonBrowserUA !== (key.config.blockNonBrowserUA ?? false) ||
       !corsArraysEqual(requiredHeadersVal, key.config.requiredHeaders ?? null);
@@ -673,8 +696,31 @@ function renderKeyDetail() {
   for (const id of ["cfgName", "cfgDifficulty", "cfgChallengeCount"]) {
     document.getElementById(id)?.addEventListener("input", checkMainDirty);
   }
-  for (const id of ["cfgRatelimitMax", "cfgRatelimitDuration"]) {
-    document.getElementById(id)?.addEventListener("input", checkSecurityDirty);
+
+  function addRatelimitTierRow(max = "", duration = "5000") {
+    const list = document.getElementById("ratelimitTiersList");
+    const idx = list.querySelectorAll(".ratelimit-tier-row").length;
+    const div = document.createElement("div");
+    div.className = "edit-row ratelimit-tier-row";
+    div.dataset.tierIndex = idx;
+    div.innerHTML = `
+      <div class="edit-field">
+        <label>Max requests</label>
+        <input type="number" class="rl-tier-max" value="${max}" min="1" max="100000" placeholder="${ratelimitSettings?.max ?? 30}">
+      </div>
+      <div class="edit-field">
+        <label>Window (ms)</label>
+        <input type="number" class="rl-tier-duration" value="${duration}" min="1000" max="3600000" step="1000" placeholder="${ratelimitSettings?.duration ?? 5000}">
+      </div>
+      <button class="origin-remove-btn rl-tier-remove" title="Remove tier">&times;</button>`;
+    div.querySelector(".rl-tier-remove").addEventListener("click", () => {
+      div.remove();
+      checkSecurityDirty();
+    });
+    div.querySelector(".rl-tier-max").addEventListener("input", checkSecurityDirty);
+    div.querySelector(".rl-tier-duration").addEventListener("input", checkSecurityDirty);
+    list.appendChild(div);
+    checkSecurityDirty();
   }
 
   function ensureKeyCorsEmptyRow() {
@@ -2191,10 +2237,13 @@ async function saveMainConfig() {
 async function saveSecurityConfig() {
   const btn = document.getElementById("saveSecurityConfigBtn");
   btn.disabled = true;
-  const rlMaxVal = document.getElementById("cfgRatelimitMax").value;
-  const rlDurVal = document.getElementById("cfgRatelimitDuration").value;
-  const ratelimitMax = rlMaxVal === "" ? null : parseInt(rlMaxVal, 10);
-  const ratelimitDuration = rlDurVal === "" ? null : parseInt(rlDurVal, 10);
+  const ratelimitTiers = [...document.querySelectorAll("#ratelimitTiersList .ratelimit-tier-row")]
+    .map((row) => ({
+      max: parseInt(row.querySelector(".rl-tier-max").value, 10),
+      duration: parseInt(row.querySelector(".rl-tier-duration").value, 10),
+    }))
+    .filter((t) => t.max > 0 && t.duration > 0);
+  const ratelimitTiersVal = ratelimitTiers.length ? ratelimitTiers : null;
   const corsEnabled = document.getElementById("cfgCorsEnabled").checked;
   const keyCorsEntries = corsEnabled
     ? [...document.querySelectorAll("#keyCorsOriginsList .key-cors-origin-input")]
@@ -2219,8 +2268,9 @@ async function saveSecurityConfig() {
   const requiredHeadersVal = requiredHeaders.length ? requiredHeaders : null;
 
   const res = await api("PUT", `/keys/${selectedKey.siteKey}/config`, {
-    ratelimitMax,
-    ratelimitDuration,
+    ratelimitTiers: ratelimitTiersVal,
+    ratelimitMax: null,
+    ratelimitDuration: null,
     corsOrigins,
     blockNonBrowserUA,
     requiredHeaders: requiredHeadersVal,
@@ -2229,8 +2279,9 @@ async function saveSecurityConfig() {
   if (res.success) {
     selectedKey.config = {
       ...selectedKey.config,
-      ratelimitMax,
-      ratelimitDuration,
+      ratelimitTiers: ratelimitTiersVal,
+      ratelimitMax: null,
+      ratelimitDuration: null,
       corsOrigins,
       blockNonBrowserUA,
       requiredHeaders: requiredHeadersVal,

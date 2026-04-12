@@ -45,6 +45,20 @@ If so, you can change the IP extraction logic to simply read from a header set i
 
 The `/siteverify` endpoint is intended for server-to-server use, so it's not ratelimited by default.
 
+### Multi-tier rate-limiting
+
+You can define multiple rate-limit tiers per site key from the dashboard's **Security** tab. Each tier specifies a maximum number of requests and a time window (in milliseconds). All tiers are checked independently — a request is blocked (HTTP 429) as soon as **any** tier is exceeded.
+
+This lets you combine short-burst and sustained-rate limits, for example:
+
+| Max requests | Window       |
+|--------------|--------------|
+| 10           | 5 000 ms     |
+| 100          | 60 000 ms    |
+| 500          | 3 600 000 ms |
+
+If no tiers are configured for a site key, the global defaults are used (30 requests / 5 seconds, configurable from **Settings**).
+
 ## Redis / Valkey
 
 Cap Standalone uses Redis (or Valkey) for all data storage. Set the `REDIS_URL` environment variable to your Redis connection string. This defaults to `redis://localhost:6379`.
